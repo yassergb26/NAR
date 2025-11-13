@@ -31,3 +31,10 @@ Thumbs.db
 
 # Optional eslint cache
 .eslintcache
+
+# AI Assistant files
+.claude/
+.cursor/
+.windsurf/
+.aider/
+.copilot/
