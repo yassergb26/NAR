@@ -256,52 +256,31 @@ async function ensureMondayWebhooks(publicBaseUrl) {
   const existing = await getExistingWebhooks();
   console.log(`📋 Found ${existing.length} existing webhooks`);
 
-  const targetEvents = ['create_item', 'create_update'];
-  const existingForThisUrl = existing.filter(wh => wh.config?.includes(webhookUrl));
-
-  // Delete ALL old webhooks for this board to clean up
-  if (existing.length > 20) {
-    console.log(`🧹 Cleaning up old webhooks (found ${existing.length})...`);
+  // Delete ALL existing webhooks for this board (clean slate)
+  if (existing.length > 0) {
+    console.log(`🧹 Deleting ALL ${existing.length} existing webhooks for clean setup...`);
     let deletedCount = 0;
 
     for (const webhook of existing) {
-      // Delete webhooks that don't match current URL or are duplicates
-      const shouldDelete = !webhook.config?.includes(webhookUrl) ||
-                          (webhook.config?.includes(webhookUrl) && !targetEvents.includes(webhook.event));
-
-      if (shouldDelete) {
-        try {
-          await deleteWebhook(webhook.id);
-          deletedCount++;
-          console.log(`🗑️  Deleted old webhook: ${webhook.event}`);
-        } catch (err) {
-          console.error(`⚠️  Could not delete webhook ${webhook.id}`);
-        }
+      try {
+        await deleteWebhook(webhook.id);
+        deletedCount++;
+        console.log(`🗑️  Deleted webhook ID ${webhook.id}: ${webhook.event}`);
+      } catch (err) {
+        console.error(`⚠️  Could not delete webhook ${webhook.id}`);
       }
     }
-    console.log(`✅ Cleaned up ${deletedCount} old webhooks`);
+    console.log(`✅ Deleted ${deletedCount} webhooks`);
   }
 
-  // Check if webhooks already exist for current URL
-  const refreshedWebhooks = await getExistingWebhooks();
-  const currentWebhooks = refreshedWebhooks.filter(wh => wh.config?.includes(webhookUrl));
-
-  // Create webhooks only if they don't exist
+  // Create fresh webhooks
   const events = [
     { name: 'create_item', description: 'Item Creation' },
     { name: 'create_update', description: 'Updates/Comments' }
   ];
 
+  console.log('🔧 Creating new webhooks...');
   for (const event of events) {
-    // Check if webhook already exists
-    const exists = currentWebhooks.some(wh => wh.event === event.name);
-
-    if (exists) {
-      console.log(`✅ ${event.description} webhook already exists - skipping`);
-      continue;
-    }
-
-    // Create new webhook
     const escapedUrl = webhookUrl.replace(/"/g, '\\"');
     const query = `mutation { create_webhook (board_id: ${CONFIG.MONDAY_BOARD_ID}, url: "${escapedUrl}", event: ${event.name}) { id board_id event } }`;
 
@@ -315,7 +294,6 @@ async function ensureMondayWebhooks(publicBaseUrl) {
       }
     } catch (err) {
       console.error(`❌ Error creating ${event.description} webhook:`, err.message);
-      console.log(`💡 Webhook may already exist or limit reached`);
     }
   }
 }
