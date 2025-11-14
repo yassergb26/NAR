@@ -173,7 +173,7 @@ receiver.app.post('/monday/webhook', async (req, res) => {
   console.log('📥 Monday webhook hit!');
   console.log('   Query params:', req.query);
   console.log('   Body:', JSON.stringify(req.body, null, 2));
-  
+
   // Verify webhook secret
   if (req.query.sig !== CONFIG.MONDAY_WEBHOOK_SECRET) {
     console.log('❌ Monday webhook: Invalid signature');
@@ -196,14 +196,21 @@ receiver.app.post('/monday/webhook', async (req, res) => {
     // Handle item creation
     if (event.type === 'create_item' || event.type === 'create_pulse') {
       const itemId = event.pulseId;
-      const itemName = event.pulseName || 'New NAR item';
+      const itemName = event.pulseName || event.pulse_name || req.body.pulseName || 'New NAR item';
+
+      // Check if we already processed this item (prevent duplicates)
+      if (itemThreadMap[itemId]) {
+        console.log(`⚠️  Item ${itemId} already processed, skipping duplicate`);
+        return res.status(200).send('ok');
+      }
+
       console.log(`🆕 Monday item created: ${itemId} - ${itemName}`);
 
       const slackRes = await app.client.chat.postMessage({
         channel: CONFIG.NAR_CHANNEL_ID,
         text: `🟢 *New NAR Created in Monday*\n• *Name:* ${itemName}\n• *Item ID:* ${itemId}\n• <https://new-age1.monday.com/boards/${CONFIG.MONDAY_BOARD_ID}/pulses/${itemId}|Open in Monday>`,
       });
-      
+
       // Map item to Slack thread
       itemThreadMap[itemId] = slackRes.ts;
       console.log(`🔗 Mapped item ${itemId} -> thread ${slackRes.ts}`);
@@ -213,7 +220,7 @@ receiver.app.post('/monday/webhook', async (req, res) => {
     if (event.type === 'create_update') {
       const itemId = event.pulseId;
       const updateBody = event.textBody || event.body || '(no text)';
-      console.log(`💬 Monday update on item ${itemId}`);
+      console.log(`💬 Monday update on item ${itemId}: ${updateBody}`);
 
       const threadTs = itemThreadMap[itemId];
       if (!threadTs) {
