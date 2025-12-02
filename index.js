@@ -95,17 +95,66 @@ app.event('message', async ({ event, client, logger }) => {
     });
 
     const thread = event.thread_ts || event.ts;
-    
-    // Only respond to new threads, not replies
-    if (!event.thread_ts) {
+
+    // If this is a reply in a thread, send it to Monday
+    if (event.thread_ts) {
+      // Find the Monday item ID for this thread
+      const itemId = Object.keys(itemThreadMap).find(id => itemThreadMap[id] === event.thread_ts);
+
+      if (itemId) {
+        console.log(`💬 Sending Slack message to Monday item ${itemId}`);
+
+        // Get user info for attribution
+        let userName = 'Slack User';
+        try {
+          const userInfo = await client.users.info({ user: event.user });
+          userName = userInfo.user?.real_name || userInfo.user?.name || 'Slack User';
+        } catch (err) {
+          console.error('⚠️  Could not fetch user info:', err.message);
+        }
+
+        // Send update to Monday
+        try {
+          const messageBody = `${userName}: ${event.text}`;
+          const updateQuery = `
+            mutation {
+              create_update (
+                item_id: ${itemId},
+                body: "${messageBody.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"
+              ) {
+                id
+              }
+            }
+          `;
+
+          await mondayGraphQL(updateQuery);
+          console.log(`✅ Update sent to Monday item ${itemId}`);
+
+          // React to message to confirm it was sent
+          await client.reactions.add({
+            channel: event.channel,
+            timestamp: event.ts,
+            name: 'white_check_mark',
+          });
+        } catch (err) {
+          console.error('❌ Failed to send update to Monday:', err.message);
+          await client.reactions.add({
+            channel: event.channel,
+            timestamp: event.ts,
+            name: 'x',
+          });
+        }
+      } else {
+        console.log('⚠️  No Monday item found for this thread');
+      }
+    } else {
+      // New thread - acknowledge the message
       await client.chat.postMessage({
         channel: event.channel,
         thread_ts: thread,
         text: `👀 Message received: "${event.text?.substring(0, 100)}..."`,
       });
     }
-
-    // TODO: Add Slack -> Monday integration (create update)
   } catch (err) {
     console.error('❌ Slack handler error:', err);
   }
