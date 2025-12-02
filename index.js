@@ -115,7 +115,8 @@ app.event('message', async ({ event, client, logger }) => {
 
         // Send update to Monday
         try {
-          const messageBody = `${userName}: ${event.text}`;
+          // Format with HTML for better display in Monday
+          const messageBody = `<strong>${userName}</strong>: ${event.text}`;
           const updateQuery = `
             mutation {
               create_update (
