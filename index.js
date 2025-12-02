@@ -107,10 +107,17 @@ app.event('message', async ({ event, client, logger }) => {
         // Get user info for attribution
         let userName = 'Slack User';
         try {
+          console.log(`🔍 Fetching user info for user ID: ${event.user}`);
           const userInfo = await client.users.info({ user: event.user });
-          userName = userInfo.user?.real_name || userInfo.user?.name || 'Slack User';
+          console.log(`📋 User info received:`, {
+            real_name: userInfo.user?.real_name,
+            name: userInfo.user?.name,
+            display_name: userInfo.user?.profile?.display_name
+          });
+          userName = userInfo.user?.real_name || userInfo.user?.profile?.display_name || userInfo.user?.name || 'Slack User';
         } catch (err) {
           console.error('⚠️  Could not fetch user info:', err.message);
+          console.error('⚠️  Error details:', err);
         }
 
         // Send update to Monday
