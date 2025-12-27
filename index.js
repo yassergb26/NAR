@@ -277,7 +277,21 @@ receiver.app.post('/monday/webhook', async (req, res) => {
     if (event.type === 'create_update') {
       const itemId = event.pulseId;
       const updateBody = event.textBody || event.body || '(no text)';
-      console.log(`💬 Monday update on item ${itemId}: ${updateBody}`);
+      const userId = event.userId;
+      console.log(`💬 Monday update on item ${itemId} by user ${userId}: ${updateBody}`);
+
+      // Get Monday user name
+      let userName = 'Monday User';
+      if (userId) {
+        try {
+          const userQuery = `query { users (ids: [${userId}]) { name } }`;
+          const userResult = await mondayGraphQL(userQuery);
+          userName = userResult.data?.users?.[0]?.name || 'Monday User';
+          console.log(`👤 Monday user name: ${userName}`);
+        } catch (err) {
+          console.error('⚠️  Could not fetch Monday user name:', err.message);
+        }
+      }
 
       const threadTs = itemThreadMap[itemId];
       if (!threadTs) {
@@ -286,7 +300,7 @@ receiver.app.post('/monday/webhook', async (req, res) => {
         await app.client.chat.postMessage({
           channel: CONFIG.NAR_CHANNEL_ID,
           thread_ts: threadTs,
-          text: `📝 *Update from Monday:*\n${updateBody}`,
+          text: `📝 *Update from Monday:*\n*${userName}:* ${updateBody}`,
         });
       }
     }
