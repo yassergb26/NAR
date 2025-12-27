@@ -144,11 +144,15 @@ app.event('message', async ({ event, client, logger }) => {
           // Track this update to prevent echoing it back from Monday webhook
           if (updateId) {
             slackSentUpdates.add(updateId);
+            console.log(`🔒 Tracking update ${updateId} to prevent echo`);
             // Auto-cleanup after 30 seconds
-            setTimeout(() => slackSentUpdates.delete(updateId), 30000);
+            setTimeout(() => {
+              slackSentUpdates.delete(updateId);
+              console.log(`🧹 Cleaned up tracking for update ${updateId}`);
+            }, 30000);
           }
 
-          console.log(`✅ Update sent to Monday item ${itemId}`);
+          console.log(`✅ Update sent to Monday item ${itemId} (update ID: ${updateId})`);
 
           // React to message to confirm it was sent
           await client.reactions.add({
@@ -294,11 +298,16 @@ receiver.app.post('/monday/webhook', async (req, res) => {
       console.log(`💬 Monday update on item ${itemId} by user ${userId}: ${updateBody}`);
 
       // Check if this update was sent from Slack (to prevent echo)
+      console.log(`🔍 Checking if update ${updateId} was sent from Slack...`);
+      console.log(`📋 Tracked updates:`, Array.from(slackSentUpdates));
+
       if (slackSentUpdates.has(updateId)) {
-        console.log(`⏭️  Skipping echo - this update was sent from Slack`);
+        console.log(`⏭️  Skipping echo - update ${updateId} was sent from Slack`);
         slackSentUpdates.delete(updateId); // Clean up
         return res.status(200).send('ok');
       }
+
+      console.log(`✅ Update ${updateId} is from Monday, will post to Slack`);
 
       // Get Monday user name
       let userName = 'Monday User';
