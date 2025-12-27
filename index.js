@@ -66,6 +66,7 @@ const app = new App({
 const itemThreadMap = {};
 
 // Track updates sent from Slack to Monday to prevent echoing back
+// Store {itemId-messageText} to identify Slack-sent updates
 const slackSentUpdates = new Set();
 
 // ======= SLACK HANDLERS =======
@@ -141,16 +142,16 @@ app.event('message', async ({ event, client, logger }) => {
           const result = await mondayGraphQL(updateQuery);
           const updateId = result.data?.create_update?.id;
 
-          // Track this update to prevent echoing it back from Monday webhook
-          if (updateId) {
-            slackSentUpdates.add(updateId);
-            console.log(`🔒 Tracking update ${updateId} to prevent echo`);
-            // Auto-cleanup after 30 seconds
-            setTimeout(() => {
-              slackSentUpdates.delete(updateId);
-              console.log(`🧹 Cleaned up tracking for update ${updateId}`);
-            }, 30000);
-          }
+          // Track this update using itemId + message text to prevent echoing
+          const trackingKey = `${itemId}-${event.text}`;
+          slackSentUpdates.add(trackingKey);
+          console.log(`🔒 Tracking update "${trackingKey}" to prevent echo`);
+
+          // Auto-cleanup after 30 seconds
+          setTimeout(() => {
+            slackSentUpdates.delete(trackingKey);
+            console.log(`🧹 Cleaned up tracking for "${trackingKey}"`);
+          }, 30000);
 
           console.log(`✅ Update sent to Monday item ${itemId} (update ID: ${updateId})`);
 
@@ -292,22 +293,26 @@ receiver.app.post('/monday/webhook', async (req, res) => {
     // Handle updates/comments
     if (event.type === 'create_update') {
       const itemId = event.pulseId;
-      const updateId = event.updateId;
       const updateBody = event.textBody || event.body || '(no text)';
       const userId = event.userId;
       console.log(`💬 Monday update on item ${itemId} by user ${userId}: ${updateBody}`);
 
       // Check if this update was sent from Slack (to prevent echo)
-      console.log(`🔍 Checking if update ${updateId} was sent from Slack...`);
-      console.log(`📋 Tracked updates:`, Array.from(slackSentUpdates));
+      // We track by itemId + message text since Monday's updateId doesn't match
+      const cleanTextBody = updateBody.replace(/<[^>]*>/g, '').trim(); // Remove HTML tags
+      const trackingKey = `${itemId}-${cleanTextBody}`;
 
-      if (slackSentUpdates.has(updateId)) {
-        console.log(`⏭️  Skipping echo - update ${updateId} was sent from Slack`);
-        slackSentUpdates.delete(updateId); // Clean up
+      console.log(`🔍 Checking if update was sent from Slack...`);
+      console.log(`   Looking for: "${trackingKey}"`);
+      console.log(`   Tracked updates:`, Array.from(slackSentUpdates));
+
+      if (slackSentUpdates.has(trackingKey)) {
+        console.log(`⏭️  Skipping echo - this update was sent from Slack`);
+        slackSentUpdates.delete(trackingKey); // Clean up
         return res.status(200).send('ok');
       }
 
-      console.log(`✅ Update ${updateId} is from Monday, will post to Slack`);
+      console.log(`✅ Update is from Monday, will post to Slack`);
 
       // Get Monday user name
       let userName = 'Monday User';
