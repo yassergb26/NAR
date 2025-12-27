@@ -154,20 +154,8 @@ app.event('message', async ({ event, client, logger }) => {
           }, 30000);
 
           console.log(`✅ Update sent to Monday item ${itemId} (update ID: ${updateId})`);
-
-          // React to message to confirm it was sent
-          await client.reactions.add({
-            channel: event.channel,
-            timestamp: event.ts,
-            name: 'white_check_mark',
-          });
         } catch (err) {
           console.error('❌ Failed to send update to Monday:', err.message);
-          await client.reactions.add({
-            channel: event.channel,
-            timestamp: event.ts,
-            name: 'x',
-          });
         }
       } else {
         console.log('⚠️  No Monday item found for this thread');
@@ -300,9 +288,18 @@ receiver.app.post('/monday/webhook', async (req, res) => {
       // Check if this update was sent from Slack (to prevent echo)
       // We track by itemId + message text since Monday's updateId doesn't match
       const cleanTextBody = updateBody.replace(/<[^>]*>/g, '').trim(); // Remove HTML tags
-      const trackingKey = `${itemId}-${cleanTextBody}`;
+
+      // Extract just the message part (after "Username: ")
+      // Format sent to Monday is: "<strong>Username</strong>: message"
+      // After stripping HTML: "Username: message"
+      const colonIndex = cleanTextBody.indexOf(': ');
+      const messageOnly = colonIndex !== -1 ? cleanTextBody.substring(colonIndex + 2) : cleanTextBody;
+      const trackingKey = `${itemId}-${messageOnly}`;
 
       console.log(`🔍 Checking if update was sent from Slack...`);
+      console.log(`   Original text: "${updateBody}"`);
+      console.log(`   Clean text: "${cleanTextBody}"`);
+      console.log(`   Message only: "${messageOnly}"`);
       console.log(`   Looking for: "${trackingKey}"`);
       console.log(`   Tracked updates:`, Array.from(slackSentUpdates));
 
