@@ -285,6 +285,21 @@ receiver.app.post('/monday/webhook', async (req, res) => {
       const userId = event.userId;
       console.log(`💬 Monday update on item ${itemId} by user ${userId}: ${updateBody}`);
 
+      // === MENTION DETECTION LOGGING ===
+      // Log raw HTML body separately to see mention markup
+      console.log(`🏷️  [MENTION DEBUG] Raw HTML body: "${event.body}"`);
+      console.log(`🏷️  [MENTION DEBUG] Raw textBody: "${event.textBody}"`);
+      // Check for common mention patterns in HTML
+      const htmlBody = event.body || '';
+      const mentionMatches = htmlBody.match(/<[^>]*mention[^>]*>|data-mention[^"]*"|data-user[^"]*"|class="[^"]*mention[^"]*"/gi);
+      console.log(`🏷️  [MENTION DEBUG] Mention-like HTML patterns found:`, mentionMatches || 'NONE');
+      // Log any @-patterns in text
+      const atMatches = (event.textBody || '').match(/@[\w\s]+/g);
+      console.log(`🏷️  [MENTION DEBUG] @-patterns in textBody:`, atMatches || 'NONE');
+      // Log all event keys for completeness
+      console.log(`🏷️  [MENTION DEBUG] All event keys:`, Object.keys(event));
+      // === END MENTION DEBUG ===
+
       // Check if this update was sent from Slack (to prevent echo)
       // We track by itemId + message text since Monday's updateId doesn't match
       const cleanTextBody = updateBody.replace(/<[^>]*>/g, '').trim(); // Remove HTML tags
