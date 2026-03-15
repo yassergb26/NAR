@@ -110,23 +110,42 @@ async function buildUserMap(slackClient) {
 function replaceMentionsWithSlackTags(htmlBody, textBody) {
   if (!htmlBody) return textBody || '';
 
-  // Find all mentions: <a ... data-mention-id="XXXXX" ...>@Name</a>
-  const mentionRegex = /data-mention-id="(\d+)"[^>]*>@([^<]+)<\/a>/g;
+  console.log(`🏷️  Parsing mentions from HTML: ${htmlBody}`);
+
+  // Try multiple regex patterns for Monday mention formats
+  const mentionPatterns = [
+    // Format: <a ... data-mention-id="XXXXX" ...>@Name</a>
+    /data-mention-id="(\d+)"[^>]*>@([^<]+)<\/a>/g,
+    // Format: <span ... data-mention-id="XXXXX" ...>@Name</span>
+    /data-mention-id="(\d+)"[^>]*>@([^<]+)<\/span>/g,
+    // Format: data-mention-id anywhere in a tag with @Name
+    /data-mention-id="(\d+)"[^>]*>[^@]*@([^<]+)</g,
+  ];
+
   let result = textBody || '';
-  let match;
+  let foundMentions = false;
 
-  while ((match = mentionRegex.exec(htmlBody)) !== null) {
-    const mondayUserId = match[1];
-    const mentionName = match[2].trim();
-    const slackUserId = mondayToSlackUserMap[mondayUserId];
+  for (const mentionRegex of mentionPatterns) {
+    let match;
+    while ((match = mentionRegex.exec(htmlBody)) !== null) {
+      foundMentions = true;
+      const mondayUserId = match[1];
+      const mentionName = match[2].trim();
+      const slackUserId = mondayToSlackUserMap[mondayUserId];
 
-    if (slackUserId) {
-      // Replace @Name with Slack mention tag
-      result = result.replace(`@${mentionName}`, `<@${slackUserId}>`);
-      console.log(`🏷️  Replaced @${mentionName} -> <@${slackUserId}>`);
-    } else {
-      console.log(`🏷️  No Slack mapping for Monday user ${mondayUserId} (@${mentionName})`);
+      if (slackUserId) {
+        // Replace @Name with Slack mention tag
+        result = result.replace(`@${mentionName}`, `<@${slackUserId}>`);
+        console.log(`🏷️  Replaced @${mentionName} -> <@${slackUserId}>`);
+      } else {
+        console.log(`🏷️  No Slack mapping for Monday user ${mondayUserId} (@${mentionName})`);
+      }
     }
+    if (foundMentions) break; // Use first pattern that matches
+  }
+
+  if (!foundMentions) {
+    console.log(`🏷️  No mentions found in HTML body`);
   }
 
   return result;
@@ -344,6 +363,7 @@ receiver.app.post('/monday/webhook', async (req, res) => {
     // Handle updates/comments
     if (event.type === 'create_update') {
       const itemId = event.pulseId;
+      const updateId = event.updateId;
       const updateBody = event.textBody || event.body || '(no text)';
       const userId = event.userId;
       console.log(`💬 Monday update on item ${itemId} by user ${userId}: ${updateBody}`);
@@ -391,8 +411,26 @@ receiver.app.post('/monday/webhook', async (req, res) => {
       if (!threadTs) {
         console.log('⚠️  No Slack thread found for item', itemId);
       } else {
+        // Fetch the full update HTML body from Monday API to get mention metadata
+        // Webhook payload doesn't include data-mention-id attributes
+        let htmlBody = event.body || '';
+        if (updateId) {
+          try {
+            const updateQuery = `query { updates (ids: [${updateId}]) { body text_body } }`;
+            const updateResult = await mondayGraphQL(updateQuery);
+            const fullUpdate = updateResult.data?.updates?.[0];
+            if (fullUpdate?.body) {
+              htmlBody = fullUpdate.body;
+              console.log(`📄 Fetched full update HTML body for mention parsing`);
+              console.log(`   HTML body: ${htmlBody.substring(0, 200)}...`);
+            }
+          } catch (err) {
+            console.error('⚠️  Could not fetch update HTML body:', err.message);
+          }
+        }
+
         // Replace Monday @mentions with Slack <@USER_ID> tags
-        const slackText = replaceMentionsWithSlackTags(event.body, updateBody);
+        const slackText = replaceMentionsWithSlackTags(htmlBody, updateBody);
         await app.client.chat.postMessage({
           channel: CONFIG.NAR_CHANNEL_ID,
           thread_ts: threadTs,
